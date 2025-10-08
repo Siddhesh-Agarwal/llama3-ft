@@ -17,9 +17,12 @@ from transformers import (
     PreTrainedModel,
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from rich.console import Console
 from transformers import BitsAndBytesConfig
 
+
 app = typer.Typer(help="Fine-tune Llama 3 with LoRA. No nonsense.")
+console = Console()
 
 
 def load_jsonl_data(file_path: str):
@@ -94,7 +97,7 @@ def setup_lora(
     r: int = 16,
     lora_alpha: int = 32,
     lora_dropout: float = 0.05,
-    target_modules=None,
+    target_modules: list[str] | None = None,
 ):
     """Configure LoRA adapters."""
 
@@ -128,7 +131,12 @@ def setup_lora(
 def main(
     # Data arguments
     data_path: Path = typer.Option(
-        ..., help="Path to JSONL file", exists=True, file_okay=True, dir_okay=False
+        ...,
+        help="Path to JSONL file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
     ),
     model_name: str = typer.Option(
         "meta-llama/Meta-Llama-3-8B", help="Base model name"
@@ -155,28 +163,28 @@ def main(
 ):
     """Fine-tune Llama 3 with LoRA."""
 
-    print("=" * 50)
-    print("Loading model and tokenizer...")
-    model, tokenizer = setup_model_and_tokenizer(model_name, use_4bit)
+    console.rule()
+    with console.status("Loading model and tokenizer..."):
+        model, tokenizer = setup_model_and_tokenizer(model_name, use_4bit)
 
-    print("Setting up LoRA...")
-    lora_model = setup_lora(
-        model,
-        r=lora_r,
-        lora_alpha=lora_alpha,
-        lora_dropout=lora_dropout,
-    )
+    with console.status("Setting up LoRA..."):
+        lora_model = setup_lora(
+            model,
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            lora_dropout=lora_dropout,
+        )
 
-    print("Loading dataset...")
-    dataset = load_jsonl_data(str(data_path))
+    with console.status("Loading dataset..."):
+        dataset = load_jsonl_data(str(data_path))
 
-    print(f"Dataset size: {len(dataset)}")
-    print("Tokenizing dataset...")
-    tokenized_dataset = dataset.map(
-        lambda x: tokenize_function(x, tokenizer, max_length),
-        batched=True,
-        remove_columns=dataset.column_names,
-    )
+    console.print(f"Dataset size: {len(dataset)}")
+    with console.status("Tokenizing dataset..."):
+        tokenized_dataset = dataset.map(
+            lambda x: tokenize_function(x, tokenizer, max_length),
+            batched=True,
+            remove_columns=dataset.column_names,
+        )
 
     # Training arguments
     training_args = TrainingArguments(
@@ -200,24 +208,22 @@ def main(
 
     # Trainer
     trainer = Trainer(
-        model=model,
+        model=lora_model,
         args=training_args,
         train_dataset=tokenized_dataset,
         data_collator=data_collator,
     )
 
-    print("=" * 50)
-    print("Starting training...")
-    print("=" * 50)
+    console.rule()
+    with console.status("Starting training..."):
+        trainer.train()
 
-    trainer.train()
+    with console.status("Saving model..."):
+        lora_model.save_pretrained(str(output_dir))
+        tokenizer.save_pretrained(str(output_dir))
 
-    print("Saving model...")
-    model.save_pretrained(str(output_dir))
-    tokenizer.save_pretrained(str(output_dir))
-
-    print(f"Model saved to {output_dir}")
-    print("Done. Now go use it.")
+    console.print(f"Model saved to {output_dir}")
+    console.print("Done. Now go use it.")
 
 
 if __name__ == "__main__":
