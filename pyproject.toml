@@ -1,0 +1,13 @@
+[project]
+name = "llama3-ft"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "datasets>=4.1.1",
+    "peft>=0.17.1",
+    "torch>=2.8.0",
+    "transformers>=4.57.0",
+    "typer>=0.19.2",
+]
